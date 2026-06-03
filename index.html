@@ -650,8 +650,8 @@ select{
 .ward-stat-of{font-size:10px;color:var(--text3);margin-left:2px;}
 
 /* ── FILTER ── */
-.filter-bar{display:flex;gap:8px;margin-bottom:12px;}
-.filter-bar select{flex:1;font-size:13px;padding:9px 11px;min-height:40px;}
+.filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+.filter-bar select{flex:1 1 40%;min-width:110px;font-size:13px;padding:9px 11px;min-height:40px;}
 
 /* ── MASTER EDITOR ── */
 .part-row{display:flex;align-items:center;gap:6px;padding:10px 0;border-bottom:1.5px solid var(--line-thin);}
@@ -1238,7 +1238,8 @@ input[type=file]{display:none;}
 <!-- ===== 一覧 ===== -->
 <div id="page-list" class="page">
   <div class="filter-bar">
-    <select id="filter-hospital" onchange="renderList()"><option value="">すべての病院</option></select>
+    <select id="filter-hospital" onchange="onHospitalFilterChange()"><option value="">すべての病院</option></select>
+    <select id="filter-ward" onchange="renderList()"><option value="">すべての病棟</option></select>
     <select id="filter-worst" onchange="renderList()">
       <option value="">すべての状態</option>
       <option>正常</option><option>要注意</option><option>要交換</option><option>交換済み</option>
@@ -1281,6 +1282,35 @@ input[type=file]{display:none;}
       ・ベッド一覧と集計表の2シート構成<br>
       ・入力された項目のみが列に表示されます<br>
       ・iPhoneのExcelアプリ・ファイルアプリで開けます
+    </p>
+  </div>
+
+  <!-- 複数人ラウンドの統合 -->
+  <div class="card">
+    <div class="card-title"><svg class="ct-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>複数人ラウンドの統合</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.7;">分担して回ったあと、各自が①で書き出し → AirDropで親機へ送り → 親機が②で取り込むと、ベッド単位でまとめて統合されます（写真込み）。</p>
+
+    <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px;">① 自分のデータを書き出す</label>
+    <div class="form-row" style="margin-bottom:10px">
+      <input type="text" id="round-label" placeholder="端末名・担当者（任意：例 田中／3F班）" maxlength="30">
+    </div>
+    <button class="btn btn-outline" onclick="exportRoundFile()" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      このデータを書き出す（写真込み）
+    </button>
+
+    <div style="height:1px;background:var(--border, #e5e7eb);margin:18px 0;"></div>
+
+    <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px;">② 受け取ったファイルを取り込む</label>
+    <input type="file" id="roundImportInput" accept=".json,application/json" style="display:none" onchange="handleRoundImport(event)">
+    <button class="btn btn-success" onclick="document.getElementById('roundImportInput').click()" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      ラウンドファイルを取り込んで統合
+    </button>
+    <p style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.7;">
+      ・同じベッド（病院＋病棟＋部屋＋ベッド）は新しい記録で上書き<br>
+      ・取り込み前に内容を確認できます。既存データは消えません<br>
+      ・病棟・部屋・ベッドの表記は全員でそろえてください
     </p>
   </div>
 </div>
@@ -1445,6 +1475,7 @@ let formPhotoIds = []; // 現在フォームに追加中の写真ID
 
 // 一覧タブの状態
 let expandedRecs = new Set();
+const WARD_BLANK='__no_ward__';
 let listSort = 'newest'; // newest / oldest / ng
 
 function loadState(){
@@ -1778,7 +1809,7 @@ function switchTab(name){
   footer.classList.toggle('show', name==='input');
   footer.classList.remove('kb-hide');
   document.body.classList.toggle('footer-on', name==='input');
-  if(name==='list')   renderList();
+  if(name==='list'){ renderWardFilterOptions(); renderList(); }
   if(name==='summary') renderSummary();
   if(name==='export')  {
     renderHospitalOptions();
@@ -2335,8 +2366,13 @@ function toggleRec(id){
 function toggleAllRecs(){
   const recs = st.records;
   const fh = document.getElementById('filter-hospital')?.value||'';
+  const fwd = document.getElementById('filter-ward')?.value||'';
   const fw = document.getElementById('filter-worst')?.value||'';
-  const visible = recs.filter(r=>(!fh||r.hospital===fh)&&(!fw||r.worst===fw));
+  const visible = recs.filter(r=>
+    (!fh||r.hospital===fh) &&
+    (fwd===WARD_BLANK ? !r.ward : (!fwd||r.ward===fwd)) &&
+    (!fw||r.worst===fw)
+  );
   const allExpanded = visible.length>0 && visible.every(r=>expandedRecs.has(r.id));
   if(allExpanded){
     visible.forEach(r=>expandedRecs.delete(r.id));
@@ -2367,11 +2403,46 @@ function dateWithDay(dateStr, timeStr){
   return `${dateStr} ${timeStr||''}`.trim();
 }
 
+function renderWardFilterOptions(keepValue){
+  const el = document.getElementById('filter-ward');
+  if(!el) return;
+  const fh = document.getElementById('filter-hospital')?.value||'';
+  const prev = keepValue!==undefined ? keepValue : el.value;
+  let recs = st.records;
+  if(fh) recs = recs.filter(r=>r.hospital===fh);
+  const wards = [...new Set(recs.map(r=>r.ward||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
+  const hasBlank = recs.some(r=>!r.ward);
+  el.innerHTML = '<option value="">すべての病棟</option>'
+    + wards.map(w=>`<option value="${w.replace(/"/g,'&quot;')}">${w}</option>`).join('')
+    + (hasBlank?`<option value="${WARD_BLANK}">（病棟未記入）</option>`:'');
+  if(prev && (prev===WARD_BLANK ? hasBlank : wards.includes(prev))) el.value = prev;
+  else el.value = '';
+}
+
+function onHospitalFilterChange(){
+  renderWardFilterOptions('');   // 病院が変われば病棟選択はリセット
+  renderList();
+}
+
+// 集計の病棟行タップ → 一覧タブへ飛び、その病院＋病棟で絞り込んだ状態で開く
+function gotoListByWard(hospName, wardVal){
+  document.getElementById('hospModal')?.classList.remove('show');
+  const fh = document.getElementById('filter-hospital');
+  if(fh) fh.value = hospName;
+  const fw = document.getElementById('filter-worst');
+  if(fw) fw.value = '';
+  renderWardFilterOptions(wardVal);
+  switchTab('list');
+}
+
 function renderList(){
   const fh = document.getElementById('filter-hospital')?.value||'';
+  const fwd = document.getElementById('filter-ward')?.value||'';
   const fw = document.getElementById('filter-worst')?.value||'';
   let recs = st.records.slice();
   if(fh) recs = recs.filter(r=>r.hospital===fh);
+  if(fwd===WARD_BLANK) recs = recs.filter(r=>!r.ward);
+  else if(fwd) recs = recs.filter(r=>r.ward===fwd);
   if(fw) recs = recs.filter(r=>r.worst===fw);
 
   // ソート
@@ -2650,8 +2721,9 @@ function openHospDetail(hospName){
       ${wardEntries.map(([w,d])=>{
         const rate = d.total ? (d.ng/d.total*100) : 0;
         const cls = rate>=20?'r-high':rate>=10?'r-mid':'r-low';
-        return `<div class="ward-row">
-          <div class="ward-name">${w}</div>
+        const fval = w==='（未記入）' ? WARD_BLANK : w;
+        return `<div class="ward-row" style="cursor:pointer" onclick="gotoListByWard('${hospName.replace(/'/g,"\\'")}','${fval.replace(/'/g,"\\'")}')">
+          <div class="ward-name">${w} <span style="color:var(--text3);font-size:12px;font-weight:600">›</span></div>
           <div class="ward-stats">
             <div class="ward-stat-item">
               <span class="ward-stat-lbl">登録台数</span>
@@ -3671,6 +3743,145 @@ function addModelMgr(){
 // TOAST
 // ═══════════════════════════════════════════════════════
 let toastTimer;
+// ═══════════════════════════════════════════════════════
+// 複数人ラウンドの統合（書き出し・取り込み）
+// ═══════════════════════════════════════════════════════
+// ベッドの自然キー：病院＋病棟＋部屋＋ベッド（表記ゆれ対策でtrim）
+function roundKey(r){
+  const n = s => (s==null?'':String(s)).trim();
+  return [n(r.hospital), n(r.ward), n(r.room), n(r.bed)].join('\u0001');
+}
+// 記録の新しさ（date+time）。文字列比較でOK（ゼロ埋め前提）
+function roundStamp(r){ return (r.date||'') + ' ' + (r.time||''); }
+
+// ① 書き出し：記録＋参照中の写真を1ファイルに（写真込み）
+function exportRoundFile(){
+  const recs = st.records || [];
+  if(recs.length === 0){ showToast('書き出す記録がありません','err'); return; }
+  // 記録から参照されている写真だけ同梱（孤立写真は除外して軽量化）
+  const usedPhotos = {};
+  recs.forEach(r => (r.photoIds||[]).forEach(pid => {
+    if(photoStore[pid]) usedPhotos[pid] = photoStore[pid];
+  }));
+  const label = (document.getElementById('round-label')?.value || '').trim();
+  const payload = {
+    app: 'roundnote', type: 'round-export', version: 1,
+    label, exportedAt: new Date().toISOString(),
+    records: recs,
+    photos: usedPhotos,
+    lists: { hospitals: st.hospitals||[], models: st.models||[], parts: st.parts||[] }
+  };
+  let blob;
+  try{ blob = new Blob([JSON.stringify(payload)], {type:'application/json'}); }
+  catch(e){ showToast('書き出しに失敗しました','err'); return; }
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const safe = label.replace(/[^\w\u3040-\u30ff\u4e00-\u9fafー]/g,'').slice(0,16);
+  const fname = 'roundnote_' + now.getFullYear() + pad(now.getMonth()+1) + pad(now.getDate())
+    + '_' + pad(now.getHours()) + pad(now.getMinutes()) + (safe ? '_' + safe : '') + '.json';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+  const mb = (blob.size/1048576).toFixed(1);
+  showToast('📤 書き出しました（' + recs.length + '件 / ' + mb + 'MB）');
+}
+
+// ② 取り込み：ベッドキーで突き合わせ、新しい記録を優先（last-write-wins）
+function handleRoundImport(event){
+  const file = event.target.files && event.target.files[0];
+  event.target.value = ''; // 同じファイルを連続で選べるようにリセット
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    let data;
+    try{ data = JSON.parse(e.target.result); }
+    catch(err){ showToast('⚠️ ファイルを読めませんでした','err'); return; }
+    if(!data || data.type !== 'round-export' || !Array.isArray(data.records)){
+      showToast('⚠️ ラウンドノートの書き出しファイルではありません','err'); return;
+    }
+    applyRoundMerge(data);
+  };
+  reader.onerror = ()=> showToast('⚠️ 読み込みに失敗しました','err');
+  reader.readAsText(file);
+}
+
+function applyRoundMerge(data){
+  const incoming = data.records;
+  const incPhotos = data.photos || {};
+  // 既存記録をベッドキーで索引化
+  const existingByKey = {};
+  st.records.forEach(r => { existingByKey[roundKey(r)] = r; });
+  const usedIds = new Set(st.records.map(r => r.id));
+
+  let added=0, updated=0, unchanged=0;
+  const ops = []; // 確定時に適用する操作を貯める
+
+  incoming.forEach(inc => {
+    const key = roundKey(inc);
+    const cur = existingByKey[key];
+    if(!cur){
+      // 新規。id衝突を避けて一意な数値idを振り直す
+      let nid = (typeof inc.id === 'number') ? inc.id : Date.now();
+      while(usedIds.has(nid)) nid++;
+      usedIds.add(nid);
+      ops.push({kind:'add', rec:{...inc, id:nid}});
+      added++;
+    } else if(roundStamp(inc) > roundStamp(cur)){
+      // 取り込み側が新しい → 既存idを保ったまま中身を差し替え
+      ops.push({kind:'update', oldRec:cur, rec:{...inc, id:cur.id}});
+      updated++;
+    } else {
+      unchanged++;
+    }
+  });
+
+  if(added===0 && updated===0){
+    showToast('統合済みでした（変更なし ' + unchanged + '件）');
+    return;
+  }
+  const label = data.label ? '「' + data.label + '」' : 'ファイル';
+  const msg = label + ' を取り込みます。\n\n'
+    + '新規追加：' + added + '件\n'
+    + '上書き更新：' + updated + '件\n'
+    + '変更なし：' + unchanged + '件\n\n統合しますか？';
+  if(!confirm(msg)) return;
+
+  // 適用
+  ops.forEach(op => {
+    if(op.kind==='add'){
+      // 同梱写真を取り込み（写真IDは端末をまたいでも衝突しない設計）
+      (op.rec.photoIds||[]).forEach(pid => { if(incPhotos[pid]) photoStore[pid]=incPhotos[pid]; });
+      st.records.unshift(op.rec);
+    } else {
+      const idx = st.records.findIndex(r => r.id === op.oldRec.id);
+      if(idx >= 0){
+        // 旧記録の写真を掃除（孤立化防止）
+        (op.oldRec.photoIds||[]).forEach(pid => { delete photoStore[pid]; });
+        (op.rec.photoIds||[]).forEach(pid => { if(incPhotos[pid]) photoStore[pid]=incPhotos[pid]; });
+        st.records[idx] = op.rec;
+      }
+    }
+  });
+
+  // リスト類（病院・型番・部位）も和集合でマージ
+  if(data.lists){
+    const uni = (a=[],b=[]) => Array.from(new Set([...a, ...b]));
+    st.hospitals = uni(st.hospitals, data.lists.hospitals);
+    st.models    = uni(st.models,    data.lists.models);
+    st.parts     = uni(st.parts,     data.lists.parts);
+  }
+
+  const okS = persistState();
+  const okP = persistPhotos();
+  if(!okS || !okP){ showToast('⚠️ 保存に失敗（容量を確認）','err'); return; }
+  updateBadge();
+  showToast('✅ 統合完了：新規' + added + ' / 更新' + updated);
+  switchTab('list');
+}
+
 function showToast(msg,type){
   const t=document.getElementById('toast');
   t.textContent=msg;
