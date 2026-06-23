@@ -3707,11 +3707,11 @@ function exportReportXLSX(){
     .sort((a,b)=>{ if(a==='不明')return 1; if(b==='不明')return -1; return a.localeCompare(b,'ja'); });
 
   // ── シート: 部品集計 ──
-  const partsRows = [], partsMerges = [];
+  const partsRows = [], partsMerges = ['A1:F1','A2:F2','A3:F3','A4:F4'];
   partsRows.push([txt('ベッドキャスター・部品交換　集計（発注用）',1)]);
-  partsRows.push([txt('施設',1), txt(`${hosp} 様`,0)]);
-  partsRows.push([txt('ラウンド',1), txt(`訪問日：${visitDate}`,0)]);
-  partsRows.push([txt('対象',1), txt('×（要交換／重大）判定のみ。△要注意・交換済みは含みません',0)]);
+  partsRows.push([txt(`施設：${hosp} 様`,0)]);
+  partsRows.push([txt(`訪問日：${visitDate}`,0)]);
+  partsRows.push([txt('対象：× 判定のみ（要交換キャスター・重大部品）。△要注意・交換済みは除く',0)]);
   partsRows.push([]);
   partsRows.push([head('No'),head('型番（機種）'),head('項目'),head('種別'),head('部品名・部品番号\n（記入欄）'),head('必要数\n(個)')]);
   let pno = 1, totalQty = 0;
