@@ -1823,6 +1823,22 @@ document.addEventListener('DOMContentLoaded', ()=>{
       el.addEventListener('change', ()=>{scheduleDraftSave();updateSaveButtonState();});
     }
   });
+  // 床番上段→年式の自動反映
+  // 末尾「数字4桁＋英字(A-H,J-M ※Iは不使用)」: 下2桁=年（26以下→20xx／27以上→19xx）
+  {
+    const f1 = document.getElementById('inp-floor1');
+    if(f1) f1.addEventListener('blur', ()=>{
+      const yearEl = document.getElementById('inp-year');
+      if(!yearEl || yearEl.value.trim()) return;   // 年式入力済みなら触らない
+      const m = f1.value.trim().match(/(\d{2})(\d{2})([A-HJ-M])$/i);
+      if(!m) return;
+      const yy = parseInt(m[2], 10);
+      const year = yy <= 26 ? 2000 + yy : 1900 + yy;
+      yearEl.value = String(year);
+      yearEl.dispatchEvent(new Event('input'));    // 下書き保存・ボタン状態を通常経路で更新
+      showToast(`年式 ${year} を自動入力（床番より）`);
+    });
+  }
   // キーボード表示時に保存フッターを隠す
   const hideFooterOnFocus = (e)=>{
     const tag = e.target.tagName;
