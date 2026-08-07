@@ -4640,9 +4640,48 @@ function closeReport(){
   document.body.style.overflow = '';
 }
 
+// 印刷：報告書を専用ウィンドウに書き出して印刷（PWAでも動きやすい方式）
+function buildPrintDoc(innerHTML, css){
+  return '<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">'
+    +'<meta name="viewport" content="width=device-width,initial-scale=1">'
+    +'<title>ベッド点検報告書</title><style>'+css+'</style></head>'
+    +'<body><div id="reportOverlay" class="show">'
+    +'<div class="rp-scroll"><div class="rp-doc" id="reportDoc">'+innerHTML+'</div></div>'
+    +'</div></body></html>';
+}
 function printReport(){
-  if(typeof window.print === 'function'){ window.print(); }
-  else{ showToast('⚠️ この環境では印刷できません','warn'); }
+  const doc = document.getElementById('reportDoc');
+  const inner = doc ? doc.innerHTML : '';
+  if(!inner.trim()){ showToast('⚠️ 先に報告書を表示してください','warn'); return; }
+
+  let css=''; document.querySelectorAll('style').forEach(s=>{ css += s.textContent; });
+
+  let w=null;
+  try{ w = window.open('', '_blank'); }catch(e){ w=null; }
+
+  if(!w){
+    // ポップアップが塞がれた等 → 直接印刷を試み、ダメなら案内
+    try{ window.print(); }
+    catch(e){ showToast('⚠️ 印刷を開始できませんでした','warn'); return; }
+    showToast('印刷が始まらない場合はポップアップを許可して再度お試しください','warn');
+    return;
+  }
+
+  try{
+    w.document.open();
+    w.document.write(buildPrintDoc(inner, css));
+    w.document.close();
+  }catch(e){
+    showToast('⚠️ 印刷ウィンドウを作成できませんでした','warn'); return;
+  }
+
+  let printed=false;
+  const fire=()=>{ if(printed)return; printed=true; try{ w.focus(); w.print(); }catch(e){} };
+  try{ w.onafterprint=()=>{ try{ w.close(); }catch(e){} }; }catch(e){}
+  // 画像(データURL)の描画を待ってから印刷
+  if(w.document.readyState==='complete'){ setTimeout(fire,400); }
+  else { w.onload=()=>setTimeout(fire,400); }
+  setTimeout(fire,1200); // 保険
 }
 
 // ═══════════════════════════════════════════════════════
