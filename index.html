@@ -668,6 +668,10 @@ select{
 }
 .rp-bar button:active{background:rgba(255,255,255,.18);}
 .rp-bar .rp-sp{margin-left:auto;}
+.rp-hint{display:none;flex-shrink:0;padding:7px 12px;background:var(--warn-bg);
+  color:var(--warn);font-size:12px;text-align:center;border-bottom:1px solid var(--line-thin);}
+@media (max-width:640px) and (orientation:portrait){.rp-hint{display:block;}}
+@media print{.rp-hint{display:none!important;}}
 .rp-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:40px;}
 .rp-doc{max-width:760px;margin:0 auto;}
 
@@ -1679,6 +1683,7 @@ input[type=file]{display:none;}
       PDF・印刷
     </button>
   </div>
+  <div class="rp-hint">📱 スマホでは横画面（横向き）での表示を推奨します</div>
   <div class="rp-scroll"><div class="rp-doc" id="reportDoc"></div></div>
 </div>
 
