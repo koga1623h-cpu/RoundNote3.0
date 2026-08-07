@@ -4640,13 +4640,41 @@ function closeReport(){
   document.body.style.overflow = '';
 }
 
-// 印刷：いま表示中の報告書をそのまま直接印刷する（＝プレビューにも中身が出る）
-// @media print 側で #reportOverlay.show 以外を隠し、A4横で1ページずつ出力する。
+// 印刷：完成済みHTMLをBlobで開き、その中で自分自身を印刷させる。
+// iOSのPWAはメイン画面からの window.print() を無視するため、別ウィンドウ経由にする。
+// document.write ではなく Blob を使い、中身が完全に読み込まれてから印刷する（白紙防止）。
+function buildPrintDoc(innerHTML, css){
+  return '<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">'
+    +'<meta name="viewport" content="width=device-width,initial-scale=1">'
+    +'<title>ベッド点検報告書</title><style>'+css+'</style></head>'
+    +'<body><div id="reportOverlay" class="show">'
+    +'<div class="rp-scroll"><div class="rp-doc" id="reportDoc">'+innerHTML+'</div></div>'
+    +'</div>'
+    +'<script>window.addEventListener("load",function(){setTimeout(function(){try{window.focus();window.print();}catch(e){}},600);});<\/script>'
+    +'</body></html>';
+}
 function printReport(){
   const doc = document.getElementById('reportDoc');
-  if(!doc || !doc.innerHTML.trim()){ showToast('⚠️ 先に報告書を表示してください','warn'); return; }
-  try{ window.print(); }
-  catch(e){ showToast('⚠️ 印刷を開始できませんでした','warn'); }
+  const inner = doc ? doc.innerHTML : '';
+  if(!inner.trim()){ showToast('⚠️ 先に報告書を表示してください','warn'); return; }
+
+  let css=''; document.querySelectorAll('style').forEach(function(s){ css += s.textContent; });
+  const html = buildPrintDoc(inner, css);
+
+  let url=null;
+  try{ url = URL.createObjectURL(new Blob([html], {type:'text/html'})); }catch(e){ url=null; }
+
+  let w=null;
+  try{ w = window.open(url || '', '_blank'); }catch(e){ w=null; }
+
+  if(!w){
+    // ポップアップが塞がれている → 直接印刷を試み、ダメなら案内
+    try{ window.print(); }catch(e){}
+    showToast('印刷できない時は 設定→Safari→ポップアップブロック をオフにしてください','warn');
+    if(url){ setTimeout(function(){ URL.revokeObjectURL(url); }, 60000); }
+    return;
+  }
+  if(url){ setTimeout(function(){ URL.revokeObjectURL(url); }, 60000); }
 }
 
 // ═══════════════════════════════════════════════════════
